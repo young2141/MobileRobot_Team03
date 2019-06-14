@@ -138,7 +138,8 @@ void poseMessageReceivedRGB(const sensor_msgs::ImageConstPtr &msg)
                 baseCmd.angular.x = 0;
                 baseCmd.angular.y = 0;
                 baseCmd.angular.z = 0;
-            pub.publish(baseCmd);
+           	pub.publish(baseCmd);
+		sleep(1);
         }
             
 
