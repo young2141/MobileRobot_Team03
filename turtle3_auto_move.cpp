@@ -290,14 +290,14 @@ int main(int argc, char **argv)
 	right_average_scan = calculate_average(laserScanXY_right);
 	std::cout << "\nlocation(x,y) : " << cx << " " << cy << std::endl;
 	std::cout << "avg distance : " << (left_average_scan + right_average_scan) / 2.0 << std::endl;        
-	// if(left_average_scan< 0.5 || right_average_scan < 0.5) {
-	// 	std::cout << "장애물발견" << std::endl;       
-	// 	doRotation(pub,cur,dRotation_left,0.4);
+	if(left_average_scan< 0.5 || right_average_scan < 0.5) {
+	 	std::cout << "장애물발견" << std::endl;       
+	 	doRotation(pub,cur,dRotation_left,0.4);
 		
-	// }
-    //     else {
+	 }
+         else {
 		doTranslation(pub, cur, 0.1, 0.4);
-	//}
+	}
     }
 
 
