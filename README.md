@@ -16,5 +16,5 @@
 3. run $rosrun knu_ros_lecture turtle_recognize_color
 
 ### turtlebot
-1. run $roslaunchraspicam_nodecamerav2_1280x960.launch
+1. run $roslaunch raspicam_nodecamerav2_1280x960.launch
 2. run $roslaunch turtlebot3_bringup turtlebot3_robot.launch
