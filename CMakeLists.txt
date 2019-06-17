@@ -134,8 +134,8 @@ include_directories(
 add_executable(turtle_position_lrf_view src/turtlebot3_pose_lidar_viewer.cpp)
 add_executable(turtle3_auto_move src/turtle3_auto_move.cpp)
 add_executable(turtle_rpiCamera_detection_sample src/turtle_rpiCamera_detection_sample.cpp)
-add_executable(turtle_recognize_color src/turtle_recognize_color.cpp
-)
+add_executable(turtle_recognize_color src/turtle_recognize_color.cpp)
+add_executable(team3_project_color src/team3_project_color.cpp)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -145,7 +145,7 @@ add_dependencies(turtle_position_lrf_view knu_ros_lecture_generate_messages_cpp)
 add_dependencies(turtle3_auto_move knu_ros_lecture_generate_messages_cpp)
 add_dependencies(turtle_rpiCamera_detection_sample knu_ros_lecture_generate_messages_cpp)
 add_dependencies(turtle_recognize_color knu_ros_lecture_generate_messages_cpp)
-
+add_dependencies(team3_project_color knu_ros_lecture_generate_messages_cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -165,6 +165,7 @@ target_link_libraries(turtle_position_lrf_view ${catkin_LIBRARIES} ${OpenCV_LIBR
 target_link_libraries(turtle3_auto_move ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 target_link_libraries(turtle_rpiCamera_detection_sample ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} )
 target_link_libraries(turtle_recognize_color ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} )
+target_link_libraries(team3_project_color ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} )
 #############
 ## Install ##
 #############
