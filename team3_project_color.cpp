@@ -5,8 +5,6 @@
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <iomanip>
-
-
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
 #include <boost/thread/mutex.hpp>
@@ -20,7 +18,6 @@ using namespace std;
 using namespace cv;
 
 ros::Publisher pub;
-
 boost::mutex mutex;
 nav_msgs::Odometry g_odom;
 float pre_dAngleTurned;
@@ -59,7 +56,8 @@ tf::Transform getInitialTransformation(void)
 
         if(transformation.getOrigin().getX() != 0. || transformation.getOrigin().getY() != 0. && transformation.getOrigin().getZ() != 0.) {
             break;
-        } else {
+        } 
+	else {
             loopRate.sleep();
         }
     }
@@ -112,19 +110,16 @@ bool doRotation(tf::Transform &initialTransformation, double dRotation, double d
 
 int detectColor(Scalar want2detect, Mat img_frame)
 {
-    Mat img_hsv;
+	Mat img_hsv;
     
-    int range_count = 0;
-
+	int range_count = 0;
 	Mat rgb_color = Mat(1, 1, CV_8UC3, want2detect); // <<-- 여기 색상을 바꿔줘야 함.
-	Mat hsv_color;
-
+ 	Mat hsv_color;
 	cvtColor(rgb_color, hsv_color, COLOR_BGR2HSV);
 
-    int hue = (int)hsv_color.at<Vec3b>(0, 0)[0];
+	int hue = (int)hsv_color.at<Vec3b>(0, 0)[0];
 	int saturation = (int)hsv_color.at<Vec3b>(0, 0)[1];
 	int value = (int)hsv_color.at<Vec3b>(0, 0)[2];
-
 	int low_hue = hue - 4;
 	int high_hue = hue + 4;
 	int low_hue1 = 0, low_hue2 = 0;
@@ -195,7 +190,7 @@ int detectColor(Scalar want2detect, Mat img_frame)
 	int width = stats.at<int>(idx, CC_STAT_WIDTH);
 	int height = stats.at<int>(idx, CC_STAT_HEIGHT);
 
-    if(left && top && width && height) {
+	if(left && top && width && height) {
 		rectangle(img_frame, Point(left, top), Point(left + width, top + height), Scalar(0, 0, 255), 1);
 		imshow("squares", img_frame);
 		return 1;
@@ -207,13 +202,13 @@ void sendVel(float x1, float y1, float z1, float x2, float y2, float z2)
 {
 	geometry_msgs::Twist baseCmd;
 	baseCmd.linear.x = x1;
-    baseCmd.linear.y = y1;
-    baseCmd.linear.z = z1;
+ 	baseCmd.linear.y = y1;
+ 	baseCmd.linear.z = z1;
 
 	baseCmd.angular.x = x2;
-    baseCmd.angular.y = y2;
-    baseCmd.angular.z = z2;
-    pub.publish(baseCmd);
+	baseCmd.angular.y = y2;
+	baseCmd.angular.z = z2;
+	pub.publish(baseCmd);
 }
 
 void sendMessage(const sensor_msgs::ImageConstPtr &msg){
@@ -226,8 +221,8 @@ void sendMessage(const sensor_msgs::ImageConstPtr &msg){
 	Scalar magenta(255, 0, 255);
 	tf::Transform current;
 	current = getCurrentTransformation();
-    currentx = current.getOrigin().getX();
-    currenty = current.getOrigin().getY();
+	currentx = current.getOrigin().getX();
+	currenty = current.getOrigin().getY();
 	
 	if(detectColor(green, img_frame) == 1) {
 		//go straight
@@ -253,13 +248,13 @@ void sendMessage(const sensor_msgs::ImageConstPtr &msg){
 int main(int argc, char **argv)
 {
     // Initialize the ROS system
-    ros::init(argc, argv, "team3_project_color");
-    ros::NodeHandle nh, nhs, nhp;
+ 	ros::init(argc, argv, "team3_project_color");
+	ros::NodeHandle nh, nhs, nhp;
 
 	ros::Subscriber sub = nhs.subscribe("/odom", 100, &odomMsgCallback);
 	image_transport::ImageTransport it(nh);
 	image_transport::Subscriber subRGB = it.subscribe("/raspicam_node/image", 1, &sendMessage, ros::VoidPtr(), image_transport::TransportHints("compressed"));
-    pub = nhp.advertise<geometry_msgs::Twist>("/cmd_vel", 100);
+	pub = nhp.advertise<geometry_msgs::Twist>("/cmd_vel", 100);
 	geometry_msgs::Twist baseCmd;
 
 	/*baseCmd.linear.x=0.03;
@@ -273,5 +268,5 @@ int main(int argc, char **argv)
     // Create a subscriber object
     // Let ROS take over
 	ros::spin();
-    return 0;
+	return 0;
 }
