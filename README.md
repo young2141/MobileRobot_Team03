@@ -12,7 +12,7 @@
 ## How to Run
 ### remotePC
 1. run ```$roscore```
-2. run ```$rosrun knu_ros_lecture turtle_recognize_color```
+2. run ```$rosrun knu_ros_lecture team3_project_move```
 
 ### turtlebot
 1. run ```$roslaunch raspicam_node camerav2_410x308_30fps.launch```
