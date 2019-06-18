@@ -22,11 +22,11 @@ boost::mutex mutex;
 nav_msgs::Odometry g_odom;
 float pre_dAngleTurned;
 
-Scalar red(0, 64, 255); //BGR 순서
+Scalar red(0, 0, 255); //BGR 순서
 Scalar green(0, 255, 0);
 Scalar yellow(0, 255, 255);
 Scalar pink(204,102,255);
-Scalar orange(0,140,255);
+Scalar orange(51,153,255);
 Scalar blue(255,0,0);
 
 void odomMsgCallback(const nav_msgs::Odometry &msg)
@@ -227,42 +227,49 @@ void sendMessage(const sensor_msgs::ImageConstPtr &msg){
 	current = getCurrentTransformation();
 	currentx = current.getOrigin().getX();
 	currenty = current.getOrigin().getY();
-	
+
 	if(detectColor(green, img_frame) == 1) {
 		//go straight
 		cout << "<<green>>" << endl;
-        sendVel(0.07, 0, 0, 0, 0, 0);
+		sendVel(0.07, 0, 0, 0, 0, 0);
+		return;
 	}	
 	else if(detectColor(yellow, img_frame) == 1) {
 		//turn left
 		cout << "\t<<yellow>>" << endl;
 		doRotation(current, -0.3, 0.5);
 		sendVel(0.07, 0, 0, 0, 0, 0);
+		return;
 	}
-	else if(detectColor(blue, img_frame) == 1) {
+	else if(detectColor(orange, img_frame) == 1) {
 		//turn right
-		cout << "\t\t<<blue>>" << endl;
+		cout << "\t\t<<orange>>" << endl;
 		doRotation(current, 0.3, 0.5);
 		sendVel(0.07, 0, 0, 0, 0, 0);
+		return;
 	}
 	else if(detectColor(pink, img_frame) == 1){
 		//go slowly
-		cout<<"\t\t<<pink"<<endl;
+		cout<<"\t\t<<pink>>"<<endl;
 		sendVel(0.01,0,0,0,0,0);
+		return;
 	}
 	else if(detectColor(red, img_frame) == 1) {
 		//stop
 		cout<<"\t\t<<red>>"<<endl;
 		sendVel(0, 0, 0, 0, 0, 0);
+		return;
 	}
-	 else {
-	 	imshow("squares", img_frame);
-	 	cout << "not detected" << endl;
+	else {
+		imshow("squares", img_frame);
+		cout << "---------not detected---------" << endl;
+		return;
 	}
 }
 
 int main(int argc, char **argv)
 {
+	int flag = 0;
     // Initialize the ROS system
  	ros::init(argc, argv, "team3_project_color");
 	ros::NodeHandle nh, nhs, nhp;
@@ -271,15 +278,6 @@ int main(int argc, char **argv)
 	image_transport::ImageTransport it(nh);
 	image_transport::Subscriber subRGB = it.subscribe("/raspicam_node/image", 1, &sendMessage, ros::VoidPtr(), image_transport::TransportHints("compressed"));
 	pub = nhp.advertise<geometry_msgs::Twist>("/cmd_vel", 100);
-	geometry_msgs::Twist baseCmd;
-
-	/*baseCmd.linear.x=0.03;
-    baseCmd.linear.y=0;
-    baseCmd.linear.z=0;
-	baseCmd.angular.x = 0;
-    baseCmd.angular.y = 0;
-    baseCmd.angular.z = 0;
-    pub.publish(baseCmd);*/
 
     // Create a subscriber object
     // Let ROS take over
