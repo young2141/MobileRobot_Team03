@@ -22,6 +22,13 @@ boost::mutex mutex;
 nav_msgs::Odometry g_odom;
 float pre_dAngleTurned;
 
+Scalar red(0, 64, 255); //BGR 순서
+Scalar green(0, 255, 0);
+Scalar yellow(0, 255, 255);
+Scalar pink(204,102,255);
+Scalar orange(0,140,255);
+Scalar blue(255,0,0);
+
 void odomMsgCallback(const nav_msgs::Odometry &msg)
 {
     mutex.lock(); {
@@ -195,6 +202,7 @@ int detectColor(Scalar want2detect, Mat img_frame)
 		imshow("squares", img_frame);
 		return 1;
 	}
+	waitKey(30);
 	return 0;
 }
 
@@ -213,12 +221,8 @@ void sendVel(float x1, float y1, float z1, float x2, float y2, float z2)
 
 void sendMessage(const sensor_msgs::ImageConstPtr &msg){
 	Mat img_frame = cv_bridge::toCvShare(msg, "bgr8")->image;
- 	Scalar red(0, 64, 255); //BGR 순서
-	Scalar green(0, 255, 0);
-	Scalar yellow(0, 255, 255);
-	Scalar blue(255, 0, 0);
+ 	
 	double currentx, currenty;
-	Scalar magenta(255, 0, 255);
 	tf::Transform current;
 	current = getCurrentTransformation();
 	currentx = current.getOrigin().getX();
@@ -233,15 +237,27 @@ void sendMessage(const sensor_msgs::ImageConstPtr &msg){
 		//turn left
 		cout << "\t<<yellow>>" << endl;
 		doRotation(current, -0.3, 0.5);
+		sendVel(0.07, 0, 0, 0, 0, 0);
 	}
 	else if(detectColor(blue, img_frame) == 1) {
 		//turn right
 		cout << "\t\t<<blue>>" << endl;
 		doRotation(current, 0.3, 0.5);
+		sendVel(0.07, 0, 0, 0, 0, 0);
+	}
+	else if(detectColor(pink, img_frame) == 1){
+		//go slowly
+		cout<<"\t\t<<pink"<<endl;
+		sendVel(0.01,0,0,0,0,0);
 	}
 	else if(detectColor(red, img_frame) == 1) {
+		//stop
 		cout<<"\t\t<<red>>"<<endl;
 		sendVel(0, 0, 0, 0, 0, 0);
+	}
+	 else {
+	 	imshow("squares", img_frame);
+	 	cout << "not detected" << endl;
 	}
 }
 
