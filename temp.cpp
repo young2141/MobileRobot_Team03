@@ -5,7 +5,8 @@
 #include <opencv2/opencv.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <iomanip>
-#include <ros/callback_queue.h>
+
+
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
 #include <boost/thread/mutex.hpp>
@@ -18,92 +19,107 @@
 using namespace std;
 using namespace cv;
 
-#define toRadian(degree)	((degree) * (M_PI / 180.))
-#define toDegree(radian)	((radian) * (180. / M_PI))
+ros::Publisher pub;
 
-boost::mutex mutex[2];
+boost::mutex mutex;
 nav_msgs::Odometry g_odom;
-sensor_msgs::LaserScan g_scan;
-bool detectedColor = false;
 float pre_dAngleTurned;
-
-
-struct pos{
-	double _x;
-	double _y;
-};
-
-template<typename T> inline bool isnan(T value)
-{
-	return value != value;
-}
-
-template<typename T> inline bool isinf(T value){
-	return numeric_limits<T>::has_infinity() && 
-		value == numeric_limits<T>::infinity();
-}
+Scalar red(0, 64, 255); //BGR 순서
+Scalar green(0, 255, 0);
+Scalar yellow(0, 255, 255);
+Scalar pink(204,102,255);
+Scalar orange(0,140,255);
+Scalar blue(255,0,0);
 
 void odomMsgCallback(const nav_msgs::Odometry &msg)
 {
-	// receive a '/odom' message with the mutex
-	mutex[0].lock(); {
-		g_odom = msg;
-	} mutex[0].unlock();
+    mutex.lock(); {
+        g_odom = msg;
+    } mutex.unlock();
 }
-
-void scanMsgCallback(const sensor_msgs::LaserScan& msg)
-{
-	// receive a '/odom' message with the mutex
-	mutex[1].lock(); {
-		g_scan = msg;
-	} 
-	mutex[1].unlock();
-}
-
 
 tf::Transform getCurrentTransformation(void)
 {
-	tf::Transform transformation;
+    tf::Transform transformation;
+    nav_msgs::Odometry odom;
 
-	nav_msgs::Odometry odom;
+    mutex.lock(); {
+        odom = g_odom;
+    } 
+    mutex.unlock();
 
-	mutex[0].lock(); {
-		odom = g_odom;
-	} 
-	mutex[0].unlock();
+    transformation.setOrigin(tf::Vector3(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z));
+    transformation.setRotation(tf::Quaternion(odom.pose.pose.orientation.x, odom.pose.pose.orientation.y, odom.pose.pose.orientation.z, odom.pose.pose.orientation.w));
 
-	transformation.setOrigin(tf::Vector3(odom.pose.pose.position.x, odom.pose.pose.position.y, odom.pose.pose.position.z));
-	transformation.setRotation(tf::Quaternion(odom.pose.pose.orientation.x, odom.pose.pose.orientation.y, odom.pose.pose.orientation.z, odom.pose.pose.orientation.w));
-
-	return transformation;
+    return transformation;
 }
 
 tf::Transform getInitialTransformation(void)
 {
-	tf::Transform transformation;
+    tf::Transform transformation;
+    ros::Rate loopRate(1000.0);
+
+    while(ros::ok()) {
+        ros::spinOnce();
+        transformation = getCurrentTransformation();
+
+        if(transformation.getOrigin().getX() != 0. || transformation.getOrigin().getY() != 0. && transformation.getOrigin().getZ() != 0.) {
+            break;
+        } else {
+            loopRate.sleep();
+        }
+    }
+    return transformation;
+}
+
+bool doRotation(tf::Transform &initialTransformation, double dRotation, double dRotationSpeed)
+{
+	geometry_msgs::Twist baseCmd;
+	baseCmd.linear.x = 0.0;
+	baseCmd.linear.y = 0.0;
+
+	if(dRotation < 0.) {
+		baseCmd.angular.z = -dRotationSpeed;
+	}
+	else {
+		baseCmd.angular.z = dRotationSpeed;
+	}
+
+	bool bDone = false;
 	ros::Rate loopRate(1000.0);
 
-	while(ros::ok()) {
+	while(ros::ok() && !bDone) {
 		ros::spinOnce();
+		tf::Transform currentTransformation = getCurrentTransformation();
 
-		transformation = getCurrentTransformation();
+		tf::Transform relativeTransformation = initialTransformation.inverse() * currentTransformation ;
+		tf::Quaternion rotationQuat = relativeTransformation.getRotation();
 
-		if(transformation.getOrigin().getX() != 0. || transformation.getOrigin().getY() != 0. && transformation.getOrigin().getZ() != 0.) {
+		double dAngleTurned = atan2((2 * rotationQuat[2] * rotationQuat[3]) , (1-(2 * (rotationQuat[2] * rotationQuat[2]) ) ));
+
+		if( fabs(dAngleTurned) > fabs(dRotation) || (dRotation == 0)) 
+		{
+			bDone = true;
 			break;
 		} 
 		else {
+			pre_dAngleTurned = dAngleTurned;
+			pub.publish(baseCmd);
 			loopRate.sleep();
 		}
 	}
 
-	return transformation;
-}
+	baseCmd.linear.x = 0.0;
+	baseCmd.angular.z = 0.0;
+	pub.publish(baseCmd);
 
+	return bDone;
+}
 
 int detectColor(Scalar want2detect, Mat img_frame)
 {
     Mat img_hsv;
-    
+    int answer = 0;
     int range_count = 0;
 
 	Mat rgb_color = Mat(1, 1, CV_8UC3, want2detect); // <<-- 여기 색상을 바꿔줘야 함.
@@ -188,267 +204,89 @@ int detectColor(Scalar want2detect, Mat img_frame)
     if(left && top && width && height) {
 		rectangle(img_frame, Point(left, top), Point(left + width, top + height), Scalar(0, 0, 255), 1);
 		imshow("squares", img_frame);
-		waitKey(30);
-		return 1;
+		answer = 1;
 	}
+	waitKey(30);
+	return answer;
+}
 
-    waitKey(30);
-	return 0;
+void sendVel(float x1, float y1, float z1, float x2, float y2, float z2)
+{
+	geometry_msgs::Twist baseCmd;
+	baseCmd.linear.x = x1;
+    baseCmd.linear.y = y1;
+    baseCmd.linear.z = z1;
+
+	baseCmd.angular.x = x2;
+    baseCmd.angular.y = y2;
+    baseCmd.angular.z = z2;
+    pub.publish(baseCmd);
 }
 
 void sendMessage(const sensor_msgs::ImageConstPtr &msg){
-
 	Mat img_frame = cv_bridge::toCvShare(msg, "bgr8")->image;
-	Scalar red(0, 64, 255); //BGR 순서
-	Scalar green(0, 255, 0);
-	Scalar yellow(0, 255, 255);
-	//Scalar magenta(255, 0, 255);
-   
-            if(detectColor(green, img_frame) == 1) {
-                cout << "<<green>>" << endl;
-                /*geometry_msgs::Twist baseCmd;
-                baseCmd.linear.x=0.2;
-                baseCmd.linear.y=0.2;
-                baseCmd.linear.z=0.2;
-                pub.publish(baseCmd);
+	double currentx, currenty;
 
-                baseCmd.angular.x = 0;
-                baseCmd.angular.y = 0;
-                baseCmd.angular.z = 0;
-                pub.publish(baseCmd);
-                sleep(1);*/
-                return;
-            }	
-            else if(detectColor(yellow, img_frame) == 1) {
-                cout << "\t<<yellow>>" << endl;
-                return;
-            }
-            else if(detectColor(red, img_frame) == 1) {
-                cout<<"\t\t<<red>>"<<endl;
-                /*geometry_msgs::Twist baseCmd;
-                baseCmd.linear.x=0;
-                baseCmd.linear.y=0;
-                baseCmd.linear.z=0;
-
-                baseCmd.angular.x = 0;
-                baseCmd.angular.y = 0;
-                baseCmd.angular.z = 0;
-                pub.publish(baseCmd);
-                sleep(1);*/
-                return;
-            }
-            else
-            {
-                detectedColor = false;
-                cout<<"nothing going on "<<endl;
-                cout<<detectedColor<<endl;
-            }
-            
-    
-}
-
-
-bool doRotation(ros::Publisher &pubTeleop, tf::Transform &initialTransformation, double dRotation, double dRotationSpeed)
-{
-	geometry_msgs::Twist baseCmd;
-	baseCmd.linear.x = 0.0;
-	baseCmd.linear.y = 0.0;
-
-	if(dRotation < 0.) {
-		baseCmd.angular.z = -dRotationSpeed;
+	tf::Transform current;
+	current = getCurrentTransformation();
+    currentx = current.getOrigin().getX();
+    currenty = current.getOrigin().getY();
+	
+	if(detectColor(green, img_frame) == 1) {
+		//go straight
+		cout << "<<green>>" << endl;
+        sendVel(0.07, 0, 0, 0, 0, 0);
+	}	
+	else if(detectColor(yellow, img_frame) == 1) {
+		//turn left
+		cout << "\t<<yellow>>" << endl;
+		doRotation(current, -0.3, 0.5);
+		sendVel(0.07, 0, 0, 0, 0, 0);
 	}
-	else {
-		baseCmd.angular.z = dRotationSpeed;
+	else if(detectColor(blue, img_frame) == 1) {
+		//turn right
+		cout << "\t\t<<blue>>" << endl;
+		doRotation(current, 0.3, 0.5);
+		sendVel(0.07, 0, 0, 0, 0, 0);
 	}
-
-	bool bDone = false;
-	ros::Rate loopRate(1000.0);
-
-	while(ros::ok() && !bDone) {
-		ros::spinOnce();
-		tf::Transform currentTransformation = getCurrentTransformation();
-
-		tf::Transform relativeTransformation = initialTransformation.inverse() * currentTransformation ;
-		tf::Quaternion rotationQuat = relativeTransformation.getRotation();
-
-		double dAngleTurned = atan2((2 * rotationQuat[2] * rotationQuat[3]) , (1-(2 * (rotationQuat[2] * rotationQuat[2]) ) ));
-
-		if( fabs(dAngleTurned) > fabs(dRotation) || (dRotation == 0)) 
-		{
-			bDone = true;
-			break;
-		} 
-		else {
-			pre_dAngleTurned = dAngleTurned;
-			pubTeleop.publish(baseCmd);
-			loopRate.sleep();
-		}
+	else if(detectColor(pink, img_frame) == 1){
+		//go slowly
+		cout<<"\t\t<<pink"<<endl;
+		sendVel(0.01,0,0,0,0,0);
 	}
-
-	baseCmd.linear.x = 0.0;
-	baseCmd.angular.z = 0.0;
-	pubTeleop.publish(baseCmd);
-
-	return bDone;
-}
-
-bool doTranslation(ros::Publisher &pubTeleop, tf::Transform &initialTransformation, double dTranslation, double dTranslationSpeed)
-{
-	geometry_msgs::Twist baseCmd;
-
-	if(dTranslation < 0) {
-		baseCmd.linear.x = -dTranslationSpeed;
-	} else {
-		baseCmd.linear.x = dTranslationSpeed;
+	else if(detectColor(red, img_frame) == 1) {
+		//stop
+		cout<<"\t\t<<red>>"<<endl;
+		sendVel(0, 0, 0, 0, 0, 0);
 	}
-
-	baseCmd.linear.y = 0;
-	baseCmd.angular.z = 0;
-
-	bool bDone = false;
-	ros::Rate loopRate(1000.0);
-
-	while(ros::ok() && !bDone) {
-		ros::spinOnce();
-
-		tf::Transform currentTransformation = getCurrentTransformation();
-
-		tf::Transform relativeTransformation = initialTransformation.inverse() * currentTransformation ;
-		double dDistMoved = relativeTransformation.getOrigin().length();
-
-		if(fabs(dDistMoved) >= fabs(dTranslation)) {
-			bDone = true;
-			break;
-		} else {
-			pubTeleop.publish(baseCmd);
-
-			loopRate.sleep();
-		}
-	}
-
-	baseCmd.linear.x = 0.0;
-	baseCmd.angular.z = 0.0;
-	pubTeleop.publish(baseCmd);
-
-	return bDone;
-}
-
-void convertScan2XYZs(sensor_msgs::LaserScan& lrfScan, vector<pos> &left_sides, vector<pos> &right_sides)
-{
-	int nRangeSize = (int)lrfScan.ranges.size();
-	left_sides.clear();
-	right_sides.clear();
-	left_sides.resize(nRangeSize);
-	right_sides.resize(nRangeSize);
-	double toNan = 0.0;
-
-	for(int i=0; i<nRangeSize; i++) {
-		double dRange = lrfScan.ranges[i];
-		pos _t;
-		if(isnan(dRange)) {
-			_t._x = 0.0 / toNan;
-			_t._y = 0.0 / toNan;
-			left_sides[i] = _t;
-			right_sides[i] = _t;
-		} 
-		else {
-			double dAngle = lrfScan.angle_min + i*lrfScan.angle_increment;
-			//right side
-			if(dAngle < 0.06){
-				_t._x = dRange * cos(dAngle);
-				_t._y = dRange * sin(dAngle);
-				right_sides[i] = _t;
-			}
-			//left side
-			else if(dAngle > 6.24){
-				_t._x = dRange * cos(dAngle);
-				_t._y = dRange * sin(dAngle);
-				left_sides[i] = _t;
-			}
-			else{
-				_t._x = 0.0 / toNan;
-				_t._y = 0.0 / toNan;
-				left_sides[i] = _t;
-				right_sides[i] = _t;
-			}
-		}
-	}
-}
-
-double calculate_average(vector<pos> &laserscanXY){
-	double sum_ = 0;
-	double laser_X,laser_Y;
-	int valid_cnt = 0;
-
-	for(int i=0;i<laserscanXY.size();i++){
-		laser_X = laserscanXY[i]._x;
-		laser_Y = laserscanXY[i]._y;		
-		if(isnan(laser_X) || isnan(laser_Y)) 
-			continue;
-		sum_ += sqrt(pow(laser_X,2) + pow(laser_Y,2));
-		valid_cnt++;
-	}
-	return sum_ / (double)valid_cnt;
+	 else {
+	 	imshow("squares", img_frame);
+	 	cout << "not detected" << endl;
+	 }
 }
 
 int main(int argc, char **argv)
 {
-	int num;
-	double dRotation_left, dRotation_right, dTranslation;
-	double newx, newy, prevx, prevy;
-	double left_average, right_average;
-	
-	ros::init(argc, argv, "team3_project_move");
-	ros::NodeHandle nhp, nhs,nh,nhq;
+    // Initialize the ROS system
+    ros::init(argc, argv, "team3_project_color");
+    ros::NodeHandle nh, nhs, nhp;
+
 	ros::Subscriber sub = nhs.subscribe("/odom", 100, &odomMsgCallback);
-	ros::Subscriber subScan = nhs.subscribe("/scan", 10, &scanMsgCallback);
-	ros::Publisher pub = nhp.advertise<geometry_msgs::Twist>("/cmd_vel", 100);
+	image_transport::ImageTransport it(nh);
+	image_transport::Subscriber subRGB = it.subscribe("/raspicam_node/image", 1, &sendMessage, ros::VoidPtr(), image_transport::TransportHints("compressed"));
+    pub = nhp.advertise<geometry_msgs::Twist>("/cmd_vel", 100);
+	geometry_msgs::Twist baseCmd;
 
+	/*baseCmd.linear.x=0.03;
+    baseCmd.linear.y=0;
+    baseCmd.linear.z=0;
+	baseCmd.angular.x = 0;
+    baseCmd.angular.y = 0;
+    baseCmd.angular.z = 0;
+    pub.publish(baseCmd);*/
 
-
-    image_transport::ImageTransport it(nh);    
-    image_transport::Subscriber subRGB = it.subscribe("/raspicam_node/image", 1, &sendMessage, ros::VoidPtr(), image_transport::TransportHints("compressed"));
-
-
-	sensor_msgs::LaserScan scan;
-	vector<pos> laserScanXY_left,laserScanXY_right;
-
-	tf::Transform initialTransformation = getInitialTransformation();
-	tf::Transform cur = initialTransformation;
-
-	prevx = cur.getOrigin().getX();
-	prevy = cur.getOrigin().getY();
-
-	dRotation_left = -0.4;
-	dRotation_right = 0.5;
-
-	while(ros::ok()){
-		cur = getCurrentTransformation();
-		prevx = cur.getOrigin().getX();
-		prevy = cur.getOrigin().getY();
-
-		mutex[1].lock(); {
-			scan = g_scan;
-		} 
-		mutex[1].unlock();
-		convertScan2XYZs(scan, laserScanXY_left,laserScanXY_right);
-
-		left_average = calculate_average(laserScanXY_left);
-		right_average = calculate_average(laserScanXY_right);
-		printf("\n-------------------------------------------------------------------\n");
-		printf("x : %lf\ty : %lf\n", prevx, prevy);
-		printf("장애물까지 거리 : %lf\n", (left_average + right_average) / 2.0);
-        
-            if(left_average < 0.5 || right_average < 0.5 ) {                
-                printf("\n\t\t\t장애물발견\n\n");		
-                doRotation(pub,cur,dRotation_left,0.2);
-            }
-            else{                
-              //  doTranslation(pub,cur,0.1,0.2);
-           }
-            printf("-------------------------------------------------------------------\n");
-	}
-
-
-	return 0;
+    // Create a subscriber object
+    // Let ROS take over
+	ros::spin();
+    return 0;
 }
